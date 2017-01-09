@@ -44,7 +44,6 @@ int ad_frequency=20480;
 int continuea=0;
 int errTimeout=1000;//一包数据产生时间
 int recont_times = 0; //重连的次数
-int repeat_times = 0; //重复次数
 int Id_Num;           //板卡ID
 int stop_flag = 0;
 int connect_flag =0;   //重连类型
@@ -255,12 +254,6 @@ DWORD WINAPI CMonitorFunction::SoundCollectThread(LPVOID lpParameter)
 
 		//采样 
 		TRACE("collect data\n");
-
-		if(repeat_times > 6000)
-		{
-	       ADStopReceive();
-		}
-
 		while(GetAdBufSize() < CMonitorFunction::s_num_samp)
 		{
 			if((recont_times>100) && (hAdThread == NULL))   //如果重连次数大100次则复位板卡
@@ -288,7 +281,6 @@ DWORD WINAPI CMonitorFunction::SoundCollectThread(LPVOID lpParameter)
 				}
 				ADStopReceive();
 				hAdThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)AD_DataReceive, NULL, 0, NULL);
-				//repeat_times = 0;//重连后置0
 				continuea=1;
 			}
      
@@ -329,10 +321,12 @@ void  AD_DataReceive(void * pParam)
 
 	float adResult=0.0f;
 
+	EnterCriticalSection(&critical_sec);
 	while(AdDataBuf.empty() == false)
 	{
 		AdDataBuf.pop();
 	}
+	LeaveCriticalSection(&critical_sec);
 
 	char *destIP=DEV_DST_IP;//"192.168.3.30";
 
@@ -452,12 +446,13 @@ void  AD_DataReceive(void * pParam)
 		{
 			errTimeout=0;
 			err=recv(SockClient,(char *)&ResultBuf[0],2920,0);
+
+			EnterCriticalSection(&critical_sec);
 			for(int ii=0;ii<(err/2);ii++)
 			{
 				adResult=ResultBuf[ii];		 
 				adResult=adResult*5.0f/32768.0f;	
 
-				EnterCriticalSection(&critical_sec);
 				if(gain==0)//根据量程修正数据
 				{
 					AdDataBuf.push(adResult*2.0f);
@@ -466,8 +461,8 @@ void  AD_DataReceive(void * pParam)
 				{
 					AdDataBuf.push(adResult);
 				}
-				LeaveCriticalSection(&critical_sec);
 			}
+			LeaveCriticalSection(&critical_sec);
 		}
 		else
 		{
@@ -569,23 +564,20 @@ int ReadAdBufData(float* databuf, int num)
 	//	return -1;
 	int jj = 0;
 
+	EnterCriticalSection(&critical_sec);
 	for (jj = 0; jj<num; jj++)
-
 	{
-	    EnterCriticalSection(&critical_sec);
 		if (AdDataBuf.empty() == false)
-		{
-		
+		{	
 			*databuf++ = AdDataBuf.front();
 			AdDataBuf.pop();
 		}
-
 		else
 		{
 			break;
 		}
-	    LeaveCriticalSection(&critical_sec);
 	}
+	LeaveCriticalSection(&critical_sec);
 
 	return jj;
 }
@@ -611,7 +603,7 @@ int ADStopReceive(void)
 unsigned int ReSetCardV6360(char *destIP)
 {
 	unsigned int idnum=0;
-		SOCKET SockClient;
+	SOCKET SockClient;
 	WSADATA wsaData;
 	WORD wVersionRequested;
 	int err;
