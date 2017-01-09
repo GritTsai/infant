@@ -1,6 +1,0 @@
-connect_flag ---> recont_times //人为++
-repeat_times //连续6000次loud且非鸣笛, reconnect
-stop_flag
-
-
-Different!
